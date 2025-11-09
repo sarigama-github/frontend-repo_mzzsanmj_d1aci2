@@ -1,119 +1,109 @@
-function PriceHistoryCard({ items = [] }) {
-  // Prepare data: normalize dates and prices for SVG plotting
-  const data = items.map((i) => ({
-    x: new Date(i.date).getTime(),
-    y: Number(i.price),
-  }));
+import React from 'react';
 
-  if (data.length === 0) {
-    return null;
-  }
+function formatCurrency(value) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(value);
+}
 
-  const padding = { top: 16, right: 16, bottom: 24, left: 36 };
-  const width = 800;
-  const height = 220;
-  const innerW = width - padding.left - padding.right;
-  const innerH = height - padding.top - padding.bottom;
+export default function PriceHistoryCard({ title = 'Price History', data = [] }) {
+  const width = 640;
+  const height = 280;
+  const margin = { top: 16, right: 16, bottom: 32, left: 48 };
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
 
-  const minX = Math.min(...data.map((d) => d.x));
-  const maxX = Math.max(...data.map((d) => d.x));
-  const minY = Math.min(...data.map((d) => d.y));
-  const maxY = Math.max(...data.map((d) => d.y));
+  const points = data
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((d) => ({ x: new Date(d.date).getTime(), y: d.price }));
 
-  const xScale = (x) => {
-    if (maxX === minX) return padding.left + innerW / 2;
-    return padding.left + ((x - minX) / (maxX - minX)) * innerW;
-  };
-  const yScale = (y) => {
-    if (maxY === minY) return padding.top + innerH / 2;
-    // Invert so higher prices appear higher on the chart visually flipped with padding
-    return padding.top + (1 - (y - minY) / (maxY - minY)) * innerH;
-  };
+  const xMin = points.length ? points[0].x : 0;
+  const xMax = points.length ? points[points.length - 1].x : 1;
+  const yMin = points.length ? Math.min(...points.map((p) => p.y)) : 0;
+  const yMax = points.length ? Math.max(...points.map((p) => p.y)) : 1;
 
-  const linePath = data
-    .map((d, i) => `${i === 0 ? 'M' : 'L'} ${xScale(d.x)} ${yScale(d.y)}`)
+  const padY = (yMax - yMin) * 0.1 || 1;
+  const y0 = yMin - padY;
+  const y1 = yMax + padY;
+
+  const xScale = (x) => ((x - xMin) / (xMax - xMin || 1)) * innerW + margin.left;
+  const yScale = (y) => innerH - ((y - y0) / (y1 - y0 || 1)) * innerH + margin.top;
+
+  const pathD = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`)
     .join(' ');
 
-  const areaPath = `${
-    data.length ? `M ${xScale(data[0].x)} ${yScale(data[0].y)}` : ''
-  } ${data
-    .map((d) => `L ${xScale(d.x)} ${yScale(d.y)}`)
-    .join(' ')} L ${xScale(data[data.length - 1].x)} ${padding.top + innerH} L ${xScale(
-    data[0].x
-  )} ${padding.top + innerH} Z`;
+  const areaD = points.length
+    ? `M ${xScale(points[0].x)} ${yScale(points[0].y)} ` +
+      points.slice(1).map((p) => `L ${xScale(p.x)} ${yScale(p.y)}`).join(' ') +
+      ` L ${xScale(points[points.length - 1].x)} ${yScale(y0)} L ${xScale(points[0].x)} ${yScale(y0)} Z`
+    : '';
 
+  // x ticks (dates)
+  const xTicks = points.length ? [points[0], points[Math.floor(points.length / 2)], points[points.length - 1]] : [];
+
+  // y ticks (prices)
   const yTicks = 4;
-  const ticks = Array.from({ length: yTicks + 1 }, (_, i) => {
-    const v = minY + (i * (maxY - minY)) / yTicks;
-    return {
-      value: Number(v.toFixed(2)),
-      y: yScale(v),
-    };
-  });
-
-  const formatDate = (ms) => {
-    const d = new Date(ms);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  };
+  const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => y0 + (i * (y1 - y0)) / yTicks);
 
   return (
-    <section id="history" className="py-10 sm:py-14 bg-white">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-gray-200 p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-gray-900">Price History</h3>
-            <span className="text-xs text-gray-500">Demo data</span>
-          </div>
-          <div className="w-full overflow-x-auto">
-            <svg
-              viewBox={`0 0 ${width} ${height}`}
-              className="w-full h-56"
-              role="img"
-              aria-label="Price history chart"
-            >
-              {/* Y grid lines */}
-              {ticks.map((t, i) => (
-                <g key={i}>
+    <section id="history" className="py-10">
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="bg-white border rounded-2xl p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <div className="mt-4 overflow-x-auto">
+            <svg width={width} height={height} className="min-w-full">
+              {/* grid */}
+              <g>
+                {yTickVals.map((yv, i) => (
                   <line
-                    x1={padding.left}
-                    x2={width - padding.right}
-                    y1={t.y}
-                    y2={t.y}
-                    stroke="#eef2f7"
+                    key={i}
+                    x1={margin.left}
+                    x2={width - margin.right}
+                    y1={yScale(yv)}
+                    y2={yScale(yv)}
+                    stroke="#e5e7eb"
                   />
-                  <text
-                    x={padding.left - 8}
-                    y={t.y}
-                    textAnchor="end"
-                    dominantBaseline="middle"
-                    className="fill-slate-500 text-[10px]"
-                  >
-                    ${t.value}
-                  </text>
+                ))}
+              </g>
+
+              {/* axes */}
+              <line x1={margin.left} x2={margin.left} y1={margin.top} y2={height - margin.bottom} stroke="#94a3b8" />
+              <line x1={margin.left} x2={width - margin.right} y1={height - margin.bottom} y2={height - margin.bottom} stroke="#94a3b8" />
+
+              {/* area */}
+              {points.length > 0 && (
+                <path d={areaD} fill="url(#areaGradient)" />
+              )}
+              <defs>
+                <linearGradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              {/* line */}
+              {points.length > 0 && (
+                <path d={pathD} fill="none" stroke="#6366f1" strokeWidth="2" />
+              )}
+
+              {/* points */}
+              {points.map((p, i) => (
+                <g key={i}>
+                  <circle cx={xScale(p.x)} cy={yScale(p.y)} r={3} fill="#6366f1" />
                 </g>
               ))}
 
-              {/* Area under line */}
-              <path d={areaPath} fill="rgba(79, 70, 229, 0.08)" />
-
-              {/* Price line */}
-              <path d={linePath} fill="none" stroke="#4f46e5" strokeWidth="2" />
-
-              {/* Points */}
-              {data.map((d, i) => (
-                <circle key={i} cx={xScale(d.x)} cy={yScale(d.y)} r={2.5} fill="#4f46e5" />
+              {/* y-axis labels */}
+              {yTickVals.map((yv, i) => (
+                <text key={i} x={margin.left - 8} y={yScale(yv)} textAnchor="end" dominantBaseline="middle" className="fill-slate-500 text-[10px]">
+                  {formatCurrency(yv)}
+                </text>
               ))}
 
-              {/* X labels */}
-              {data.map((d, i) => (
-                <text
-                  key={i}
-                  x={xScale(d.x)}
-                  y={height - 6}
-                  textAnchor="middle"
-                  className="fill-slate-500 text-[10px]"
-                >
-                  {formatDate(d.x)}
+              {/* x-axis labels */}
+              {xTicks.map((t, i) => (
+                <text key={i} x={xScale(t.x)} y={height - margin.bottom + 18} textAnchor="middle" className="fill-slate-500 text-[10px]">
+                  {new Date(t.x).toLocaleDateString()}
                 </text>
               ))}
             </svg>
@@ -123,5 +113,3 @@ function PriceHistoryCard({ items = [] }) {
     </section>
   );
 }
-
-export default PriceHistoryCard;
